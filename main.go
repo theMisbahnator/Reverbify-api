@@ -8,48 +8,59 @@ import (
 // This command is used to update and install the FFmpeg package on a system that uses
 // RUN apt-get -y update && apt-get -y upgrade && apt-get install -y --no-install-recommends ffmpeg
 
-// exectuable command to slow down music by 50 percent
-// ffmpeg -i input.mp3 -filter:a "atempo=0.5" output.mp3
-
-/*
-
-This command will take an input file called "input.mp3" and create a new output file called "output.mp3"
-with a moderate amount of reverb added to the audio. The four parameters of the aecho filter control the
-amount of echo, the decay factor, the delay in milliseconds, and the wet/dry mix, respectively.
-
-You can adjust the parameters of the aecho filter to achieve the desired amount of reverb for your MP3 file.
-For example, increasing the decay factor and the wet/dry mix will result in a stronger reverb effect, while
-decreasing them will result in a weaker effect.
-
-*/
-// ffmpeg -i input.mp3 -filter:a "aecho=0.8:0.9:1000:0.3" output.mp3
-
 func main() {
-	getMP3FromYotube("https://www.youtube.com/watch?v=ZBRuPESPiog")
+	transform("heheheh", "https://www.youtube.com/watch?v=fe-CdBzr9Kg", "VOC_deep_verb.WAV")
 }
 
-func getMP3FromYotube(url string) {
+func transform(fileName string, url string, filter string) {
+	// download video
+	getMP3FromYotube(url, fileName)
+
+	// add reverb
+	fileName = fileName + ".mp3"
+	fileNameRev := "r" + fileName
+	fmt.Println("Adding reverb...")
+	reverbCommand := exec.Command("ffmpeg", "-i", fileName, "-i", filter, "-filter_complex",
+		"[0] [1] afir=dry=10:wet=10 [reverb]; [0] [reverb] amix=inputs=2:weights=10 1", fileNameRev)
+	reverbOutput, err := reverbCommand.CombinedOutput()
+	logErr(err, reverbOutput)
+
+	// lower pitch
+	fileNamePit := "p" + fileNameRev
+	fmt.Println("Lowering pitch...")
+	pitchCommand := exec.Command("ffmpeg", "-i", fileNameRev, "-af", "asetrate=44100*0.8,aresample=44100", fileNamePit)
+	pitchOutput, err := pitchCommand.CombinedOutput()
+	logErr(err, pitchOutput)
+
+	fmt.Println("Complete!")
+
+}
+
+func getMP3FromYotube(url string, fileName string) {
+	fileNameMP4 := fileName + ".mp4"
+	fileNameMP3 := fileName + ".mp3"
+
 	// Uses youtube-dl exec on machine to download videos from youtube
 	fmt.Println("Downloaded mp4 file...")
-	downloadCommand := exec.Command("youtube-dl", "-f", "best", "-o", "video.mp4", url)
+	downloadCommand := exec.Command("youtube-dl", "-f", "best", "-o", fileNameMP4, url)
 	downloadOutput, err := downloadCommand.CombinedOutput()
 	logErr(err, downloadOutput)
 
 	// converts mp4 to mp3 using ffmpeg
 	fmt.Println("Converting mp4 to mp3 file...")
-	convertCommand := exec.Command("ffmpeg", "-i", "video.mp4", "video.mp3")
+	convertCommand := exec.Command("ffmpeg", "-i", fileNameMP4, fileNameMP3)
 	convertOutput, err := convertCommand.CombinedOutput()
 	logErr(err, convertOutput)
 
 	// removes uneeded mp4 file
 	fmt.Println("Removing mp4 file...")
-	deleteFile("video.mp4")
+	deleteFile(fileNameMP4)
 
 	fmt.Println("Successfully downloaded and converted YouTube video to MP3!")
 }
 
 func deleteFile(fileName string) {
-	deleteCommand := exec.Command("rm", "-r", "video.mp4")
+	deleteCommand := exec.Command("rm", "-r", fileName)
 	deleteOutput, err := deleteCommand.CombinedOutput()
 	logErr(err, deleteOutput)
 }
