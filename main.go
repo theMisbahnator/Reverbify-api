@@ -15,7 +15,20 @@ import (
 var filter_path string = "./LexiconPCM90_Halls/"
 
 func main() {
-	transform("week", "https://www.youtube.com/watch?v=M4ZoCHID9GI&list=RDoKtdps9Lm7A&index=8", filter_path+"CUSTOM_pump_verb.WAV")
+	transform("never", "https://www.youtube.com/watch?v=OlStmta0Vh4&list=RDoKtdps9Lm7A&index=11", filter_path+"CUSTOM_pump_verb.WAV")
+}
+
+func getVideoLength(fileName string) string {
+	readCommand := exec.Command("ffmpeg", "-i", fileName)
+	readOutput, _ := readCommand.CombinedOutput()
+
+	// search for video duration
+	regex := regexp.MustCompile(`Duration:\s([0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{2})`)
+
+	// find instance within vid url
+	videoDuration := regex.FindStringSubmatch(string(readOutput))[1]
+
+	return videoDuration
 }
 
 func transform(fileName string, url string, filter string) {
@@ -47,6 +60,7 @@ func transform(fileName string, url string, filter string) {
 	}
 
 	fmt.Println(getThumbnail(url))
+	fmt.Println(getVideoLength(fileNamePit))
 	fmt.Println("Complete!")
 }
 
