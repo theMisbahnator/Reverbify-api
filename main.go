@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os/exec"
+	"regexp"
 )
 
 // This command is used to update and install the FFmpeg package on a system that uses
@@ -14,12 +15,14 @@ import (
 var filter_path string = "./LexiconPCM90_Halls/"
 
 func main() {
-	transform("pump", "https://www.youtube.com/watch?v=fe-CdBzr9Kg", filter_path+"CUSTOM_pump_verb.WAV")
+	transform("week", "https://www.youtube.com/watch?v=M4ZoCHID9GI&list=RDoKtdps9Lm7A&index=8", filter_path+"CUSTOM_pump_verb.WAV")
 }
 
 func transform(fileName string, url string, filter string) {
 	// download video
-	getMP3FromYotube(url, fileName)
+	if !getMP3FromYotube(url, fileName) {
+		return
+	}
 
 	// add reverb
 	fileName = fileName + ".mp3"
@@ -28,22 +31,36 @@ func transform(fileName string, url string, filter string) {
 	reverbCommand := exec.Command("ffmpeg", "-i", fileName, "-i", filter, "-filter_complex",
 		"[0] [1] afir=dry=10:wet=10 [reverb]; [0] [reverb] amix=inputs=2:weights=10 1", fileNameRev)
 	reverbOutput, err := reverbCommand.CombinedOutput()
-	logErr(err, reverbOutput)
-	deleteFile(fileName)
+	if logErr(err, reverbOutput) || !deleteFile(fileName) {
+		fmt.Println("ERR: Found in reverbing process or deleting excess file.")
+		return
+	}
 
 	// alter pitch
 	fileNamePit := "pitch_" + fileNameRev
 	fmt.Println("Lowering pitch...")
 	pitchCommand := exec.Command("ffmpeg", "-i", fileNameRev, "-af", "asetrate=44100*0.85,aresample=44100", fileNamePit)
 	pitchOutput, err := pitchCommand.CombinedOutput()
-	logErr(err, pitchOutput)
-	deleteFile(fileNameRev)
+	if logErr(err, pitchOutput) || !deleteFile(fileNameRev) {
+		fmt.Println("ERR: Found in altering pitch process or deleting excess file.")
+		return
+	}
 
+	fmt.Println(getThumbnail(url))
 	fmt.Println("Complete!")
-
 }
 
-func getMP3FromYotube(url string, fileName string) {
+func getThumbnail(url string) string {
+	// compile regex expression
+	regex := regexp.MustCompile(`v=([^&]+)`)
+
+	// find instance within vid url
+	videoID := regex.FindStringSubmatch(url)[1]
+
+	return "https://img.youtube.com/vi/" + videoID + "/maxresdefault.jpg"
+}
+
+func getMP3FromYotube(url string, fileName string) bool {
 	fileNameMP4 := fileName + ".mp4"
 	fileNameMP3 := fileName + ".mp3"
 
@@ -51,30 +68,37 @@ func getMP3FromYotube(url string, fileName string) {
 	fmt.Println("Downloaded mp4 file...")
 	downloadCommand := exec.Command("youtube-dl", "-f", "best", "-o", fileNameMP4, url)
 	downloadOutput, err := downloadCommand.CombinedOutput()
-	logErr(err, downloadOutput)
+	if logErr(err, downloadOutput) {
+		return false
+	}
 
 	// converts mp4 to mp3 using ffmpeg
 	fmt.Println("Converting mp4 to mp3 file...")
 	convertCommand := exec.Command("ffmpeg", "-i", fileNameMP4, fileNameMP3)
 	convertOutput, err := convertCommand.CombinedOutput()
-	logErr(err, convertOutput)
+	if logErr(err, convertOutput) {
+		return false
+	}
 
 	// removes uneeded mp4 file
 	fmt.Println("Removing mp4 file...")
-	deleteFile(fileNameMP4)
+	if !deleteFile(fileNameMP4) {
+		return false
+	}
 
 	fmt.Println("Successfully downloaded and converted YouTube video to MP3!")
+	return true
 }
 
-func deleteFile(fileName string) {
+func deleteFile(fileName string) bool {
 	deleteCommand := exec.Command("rm", "-r", fileName)
 	deleteOutput, err := deleteCommand.CombinedOutput()
-	logErr(err, deleteOutput)
+	return !logErr(err, deleteOutput)
 }
 
-func logErr(err error, output []byte) {
+func logErr(err error, output []byte) bool {
 	if err != nil {
 		fmt.Println(fmt.Sprint(err) + ": " + string(output))
-		return
 	}
+	return err != nil
 }
