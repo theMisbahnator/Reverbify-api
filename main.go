@@ -8,8 +8,13 @@ import (
 // This command is used to update and install the FFmpeg package on a system that uses
 // RUN apt-get -y update && apt-get -y upgrade && apt-get install -y --no-install-recommends ffmpeg
 
+// slowed: .85
+// fast: 1.15
+
+var filter_path string = "./LexiconPCM90_Halls/"
+
 func main() {
-	transform("heheheh", "https://www.youtube.com/watch?v=fe-CdBzr9Kg", "VOC_deep_verb.WAV")
+	transform("pump", "https://www.youtube.com/watch?v=fe-CdBzr9Kg", filter_path+"CUSTOM_pump_verb.WAV")
 }
 
 func transform(fileName string, url string, filter string) {
@@ -18,19 +23,21 @@ func transform(fileName string, url string, filter string) {
 
 	// add reverb
 	fileName = fileName + ".mp3"
-	fileNameRev := "r" + fileName
+	fileNameRev := "reverb_" + fileName
 	fmt.Println("Adding reverb...")
 	reverbCommand := exec.Command("ffmpeg", "-i", fileName, "-i", filter, "-filter_complex",
 		"[0] [1] afir=dry=10:wet=10 [reverb]; [0] [reverb] amix=inputs=2:weights=10 1", fileNameRev)
 	reverbOutput, err := reverbCommand.CombinedOutput()
 	logErr(err, reverbOutput)
+	deleteFile(fileName)
 
-	// lower pitch
-	fileNamePit := "p" + fileNameRev
+	// alter pitch
+	fileNamePit := "pitch_" + fileNameRev
 	fmt.Println("Lowering pitch...")
-	pitchCommand := exec.Command("ffmpeg", "-i", fileNameRev, "-af", "asetrate=44100*0.8,aresample=44100", fileNamePit)
+	pitchCommand := exec.Command("ffmpeg", "-i", fileNameRev, "-af", "asetrate=44100*0.85,aresample=44100", fileNamePit)
 	pitchOutput, err := pitchCommand.CombinedOutput()
 	logErr(err, pitchOutput)
+	deleteFile(fileNameRev)
 
 	fmt.Println("Complete!")
 
