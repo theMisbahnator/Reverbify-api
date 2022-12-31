@@ -1,15 +1,14 @@
 package main
 
 import (
-	ap "github.com/theMisbahnator/Reverbify/controllers"
-
 	"github.com/gin-gonic/gin"
+	ap "github.com/theMisbahnator/Reverbify/controllers"
 )
 
 // import "github.com/gin-gonic/gin"
 
 func main() {
 	r := gin.Default()
-	r.GET("/ping", ap.Init)
+	r.POST("/reverb-song", ap.Init_audio_processing)
 	r.Run() // listen and serve on 0.0.0.0:8080
 }

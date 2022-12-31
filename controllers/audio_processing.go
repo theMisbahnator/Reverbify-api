@@ -17,9 +17,19 @@ import (
 // var filter_path string = "./LexiconPCM90_Halls/"
 // transform("carelesswhisper", "https://www.youtube.com/watch?v=oKtdps9Lm7A", filter_path+"CUSTOM_pump_verb.WAV")
 
-func Init(c *gin.Context) {
+type audio_request struct {
+	Url string `json:"url"`
+}
+
+func Init_audio_processing(c *gin.Context) {
+	// youtube link
+	var body audio_request
+	if err := c.BindJSON(&body); err != nil {
+		c.String(400, "Invalid request body")
+		return
+	}
 	c.JSON(200, gin.H{
-		"message": "pong",
+		"message": body.Url,
 	})
 }
 
