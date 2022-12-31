@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,7 +15,8 @@ import (
 // slowed: .85
 // fast: 1.15
 
-// var filter_path string = "./LexiconPCM90_Halls/"
+var filter_path string = "./LexiconPCM90_Halls/"
+
 // transform("carelesswhisper", "https://www.youtube.com/watch?v=oKtdps9Lm7A", filter_path+"CUSTOM_pump_verb.WAV")
 
 type audio_request struct {
@@ -28,9 +30,31 @@ func Init_audio_processing(c *gin.Context) {
 		c.String(400, "Invalid request body")
 		return
 	}
+
+	// transform("dummyName", body.Url, filter_path+"CUSTOM_pump_verb.WAV")
+	title, fileName := getTitle(body.Url)
 	c.JSON(200, gin.H{
-		"message": body.Url,
+		"message":  body.Url,
+		"title":    title,
+		"fileName": fileName,
 	})
+}
+
+func getTitle(url string) (string, string) {
+	getTitleCommand := exec.Command("youtube-dl", "--skip-download", "--get-title", url)
+	getTitleOutput, err := getTitleCommand.CombinedOutput()
+	if logErr(err, getTitleOutput) {
+		return "ERROR", "ERROR"
+	}
+
+	raw := string(getTitleOutput)
+	title := raw
+	if len(raw) > 2 {
+		title = raw[:len(raw)-2]
+	}
+	fileName := strings.Replace(title, " ", "_", -1)
+
+	return title, fileName
 }
 
 func transform(fileName string, url string, filter string) {
