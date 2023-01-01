@@ -20,14 +20,8 @@ var filter_path string = "./LexiconPCM90_Halls/"
 // transform("carelesswhisper", "https://www.youtube.com/watch?v=oKtdps9Lm7A", filter_path+"CUSTOM_pump_verb.WAV")
 
 type audio_request struct {
-	Url string `json:"url"`
-}
-
-func Test(c *gin.Context) {
-	transform("drake", "https://www.youtube.com/watch?v=61ymOWwOwuk", filter_path+"CUSTOM_pump_verb.WAV")
-	c.JSON(200, gin.H{
-		"message": "Process Done!",
-	})
+	Url       string `json:"url"`
+	PitchType int    `json:"pitch"` // 0 nothing, 1 fast (nightcore), -1 daycore (slow)
 }
 
 func Init_audio_processing(c *gin.Context) {
@@ -37,37 +31,31 @@ func Init_audio_processing(c *gin.Context) {
 		c.String(400, "Invalid request body")
 		return
 	}
-
-	// transform("dummyName", body.Url, filter_path+"CUSTOM_pump_verb.WAV")
-	title, fileName := getTitle(body.Url)
-	c.JSON(200, gin.H{
-		"message":  body.Url,
-		"title":    title,
-		"fileName": fileName,
-	})
+	var pitch string = "1.0"
+	if body.PitchType == 1 {
+		pitch = "1.15"
+	} else if body.PitchType == -1 {
+		pitch = "0.85"
+	}
+	transform(c, body.Url, filter_path+"CUSTOM_pump_verb.WAV", pitch)
 }
 
-func getTitle(url string) (string, string) {
-	getTitleCommand := exec.Command("youtube-dl", "--skip-download", "--get-title", url)
-	getTitleOutput, err := getTitleCommand.CombinedOutput()
-	if logErr(err, getTitleOutput) {
-		return "ERROR", "ERROR"
+func transform(c *gin.Context, url string, filter string, pitch string) {
+	// get title information
+	title, fileName := getTitle(url)
+	if title == fileName && title == "ERROR: unable to get title." {
+		c.JSON(400, gin.H{
+			"ERROR": "Failed to get youtube header information.",
+		})
+		return
 	}
 
-	raw := string(getTitleOutput)
-	title := raw
-	if len(raw) > 2 {
-		title = raw[:len(raw)-1]
-	}
-	fileName := strings.Replace(title, " ", "_", -1)
-
-	return title, fileName
-}
-
-func transform(fileName string, url string, filter string) {
 	// download video
 	if !getMP3FromYotube(url, fileName) {
-		return // error downloading mp3
+		c.JSON(400, gin.H{
+			"ERROR": "Failed to download from youtube. ",
+		})
+		return
 	}
 
 	// add reverb
@@ -78,23 +66,39 @@ func transform(fileName string, url string, filter string) {
 		"[0] [1] afir=dry=10:wet=10 [reverb]; [0] [reverb] amix=inputs=2:weights=10 1", fileNameRev)
 	reverbOutput, err := reverbCommand.CombinedOutput()
 	if logErr(err, reverbOutput) || !deleteFile(fileName) {
-		fmt.Println("ERR: Found in reverbing process or deleting excess file.")
+		c.JSON(400, gin.H{
+			"ERROR": "Failed in the reverbing process or deleting excess file.",
+		})
 		return
 	}
 
 	// alter pitch
-	fileNamePit := "pitch_" + fileNameRev
+	var core string = "norm"
+	if pitch == "1" {
+		core = "fast"
+	} else if pitch == "-1" {
+		core = "slow"
+	}
+	fileNamePit := "pitch_" + core + "_" + fileNameRev
 	fmt.Println("Lowering pitch...")
-	pitchCommand := exec.Command("ffmpeg", "-i", fileNameRev, "-af", "asetrate=44100*0.85,aresample=44100", fileNamePit)
+	pitchCommand := exec.Command("ffmpeg", "-i", fileNameRev, "-af", "asetrate=44100*"+pitch+",aresample=44100", fileNamePit)
 	pitchOutput, err := pitchCommand.CombinedOutput()
 	if logErr(err, pitchOutput) || !deleteFile(fileNameRev) {
-		fmt.Println("ERR: Found in altering pitch process or deleting excess file.")
+		c.JSON(400, gin.H{
+			"ERROR": "Failed in the altering pitch process or deleting excess file.",
+		})
 		return
 	}
 
-	fmt.Println(getThumbnail(url))
-	fmt.Println(getVideoLength(fileNamePit))
+	thumbnailURL := getThumbnail(url)
+	duration := getVideoLength(fileNamePit)
 	fmt.Println("Complete!")
+
+	c.JSON(200, gin.H{
+		"title":     title,
+		"duration":  duration,
+		"thumbnail": thumbnailURL,
+	})
 }
 
 func getMP3FromYotube(url string, fileName string) bool {
@@ -125,6 +129,23 @@ func getMP3FromYotube(url string, fileName string) bool {
 
 	fmt.Println("Successfully downloaded and converted YouTube video to MP3!")
 	return true
+}
+
+func getTitle(url string) (string, string) {
+	getTitleCommand := exec.Command("youtube-dl", "--skip-download", "--get-title", url)
+	getTitleOutput, err := getTitleCommand.CombinedOutput()
+	if logErr(err, getTitleOutput) {
+		return "ERROR: unable to get title.", "ERROR: unable to get title."
+	}
+
+	raw := string(getTitleOutput)
+	title := raw
+	if len(raw) > 2 {
+		title = raw[:len(raw)-1]
+	}
+	fileName := strings.Replace(title, " ", "_", -1)
+
+	return title, fileName
 }
 
 func getThumbnail(url string) string {
