@@ -23,6 +23,13 @@ type audio_request struct {
 	Url string `json:"url"`
 }
 
+func Test(c *gin.Context) {
+	transform("dummy", "https://www.youtube.com/watch?v=61ymOWwOwuk", filter_path+"CUSTOM_pump_verb.WAV")
+	c.JSON(200, gin.H{
+		"message": "Process Done!",
+	})
+}
+
 func Init_audio_processing(c *gin.Context) {
 	// youtube link
 	var body audio_request
@@ -50,7 +57,7 @@ func getTitle(url string) (string, string) {
 	raw := string(getTitleOutput)
 	title := raw
 	if len(raw) > 2 {
-		title = raw[:len(raw)-2]
+		title = raw[:len(raw)-1]
 	}
 	fileName := strings.Replace(title, " ", "_", -1)
 
@@ -78,7 +85,7 @@ func transform(fileName string, url string, filter string) {
 	// alter pitch
 	fileNamePit := "pitch_" + fileNameRev
 	fmt.Println("Lowering pitch...")
-	pitchCommand := exec.Command("ffmpeg", "-i", fileNameRev, "-af", "asetrate=44100*0.85,aresample=44100", fileNamePit)
+	pitchCommand := exec.Command("ffmpeg", "-i", fileNameRev, "-af", "asetrate=44100*1.15,aresample=44100", fileNamePit)
 	pitchOutput, err := pitchCommand.CombinedOutput()
 	if logErr(err, pitchOutput) || !deleteFile(fileNameRev) {
 		fmt.Println("ERR: Found in altering pitch process or deleting excess file.")
