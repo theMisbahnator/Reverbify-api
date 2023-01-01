@@ -24,7 +24,7 @@ type audio_request struct {
 }
 
 func Test(c *gin.Context) {
-	transform("dummy", "https://www.youtube.com/watch?v=61ymOWwOwuk", filter_path+"CUSTOM_pump_verb.WAV")
+	transform("drake", "https://www.youtube.com/watch?v=61ymOWwOwuk", filter_path+"CUSTOM_pump_verb.WAV")
 	c.JSON(200, gin.H{
 		"message": "Process Done!",
 	})
@@ -85,7 +85,7 @@ func transform(fileName string, url string, filter string) {
 	// alter pitch
 	fileNamePit := "pitch_" + fileNameRev
 	fmt.Println("Lowering pitch...")
-	pitchCommand := exec.Command("ffmpeg", "-i", fileNameRev, "-af", "asetrate=44100*1.15,aresample=44100", fileNamePit)
+	pitchCommand := exec.Command("ffmpeg", "-i", fileNameRev, "-af", "asetrate=44100*0.85,aresample=44100", fileNamePit)
 	pitchOutput, err := pitchCommand.CombinedOutput()
 	if logErr(err, pitchOutput) || !deleteFile(fileNameRev) {
 		fmt.Println("ERR: Found in altering pitch process or deleting excess file.")
@@ -103,7 +103,7 @@ func getMP3FromYotube(url string, fileName string) bool {
 
 	// Uses youtube-dl exec on machine to download videos from youtube
 	fmt.Println("Downloaded mp4 file...")
-	downloadCommand := exec.Command("youtube-dl", "-f", "best", "-o", fileNameMP4, url)
+	downloadCommand := exec.Command("yt-dlp", "-f", "ba", "-S", "ext:mp4", "-o", fileNameMP4, url)
 	downloadOutput, err := downloadCommand.CombinedOutput()
 	if logErr(err, downloadOutput) {
 		return false
