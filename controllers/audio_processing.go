@@ -96,6 +96,8 @@ func transform(c *gin.Context, url string, filter string, pitch string) {
 	duration := getVideoLength(path)
 	fmt.Println("Complete!")
 
+	upload(path, fileNamePit)
+
 	c.JSON(200, gin.H{
 		"title":     title,
 		"duration":  duration,
