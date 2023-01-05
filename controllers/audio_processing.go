@@ -12,16 +12,17 @@ import (
 // This command is used to update and install the FFmpeg package on a system that uses
 // RUN apt-get -y update && apt-get -y upgrade && apt-get install -y --no-install-recommends ffmpeg
 
-// slowed: .85
-// fast: 1.15
-
 var filter_path string = "./LexiconPCM90_Halls/"
-
-// transform("carelesswhisper", "https://www.youtube.com/watch?v=oKtdps9Lm7A", filter_path+"CUSTOM_pump_verb.WAV")
 
 type audio_request struct {
 	Url       string `json:"url"`
 	PitchType int    `json:"pitch"` // 0 nothing, 1 fast (nightcore), -1 daycore (slow)
+}
+
+func Test(c *gin.Context) {
+	fn := "reverb_dummy.mp3"
+	upload("./music/"+fn, fn)
+	c.JSON(200, "")
 }
 
 func Init_audio_processing(c *gin.Context) {
@@ -74,14 +75,15 @@ func transform(c *gin.Context, url string, filter string, pitch string) {
 
 	// alter pitch
 	var core string = "norm"
-	if pitch == "1" {
+	if pitch == "1.15" {
 		core = "fast"
-	} else if pitch == "-1" {
+	} else if pitch == "0.85" {
 		core = "slow"
 	}
 	fileNamePit := "pitch_" + core + "_" + fileNameRev
 	fmt.Println("Lowering pitch...")
-	pitchCommand := exec.Command("ffmpeg", "-i", fileNameRev, "-af", "asetrate=44100*"+pitch+",aresample=44100", fileNamePit)
+	path := "./music/" + fileNamePit
+	pitchCommand := exec.Command("ffmpeg", "-i", fileNameRev, "-af", "asetrate=44100*"+pitch+",aresample=44100", path)
 	pitchOutput, err := pitchCommand.CombinedOutput()
 	if logErr(err, pitchOutput) || !deleteFile(fileNameRev) {
 		c.JSON(400, gin.H{
@@ -91,7 +93,7 @@ func transform(c *gin.Context, url string, filter string, pitch string) {
 	}
 
 	thumbnailURL := getThumbnail(url)
-	duration := getVideoLength(fileNamePit)
+	duration := getVideoLength(path)
 	fmt.Println("Complete!")
 
 	c.JSON(200, gin.H{
@@ -171,8 +173,8 @@ func getVideoLength(fileName string) string {
 	return videoDuration
 }
 
-func deleteFile(fileName string) bool {
-	deleteCommand := exec.Command("rm", "-r", fileName)
+func deleteFile(path string) bool {
+	deleteCommand := exec.Command("rm", "-r", path)
 	deleteOutput, err := deleteCommand.CombinedOutput()
 	return !logErr(err, deleteOutput)
 }
