@@ -15,6 +15,5 @@ func init() {
 func main() {
 	r := gin.Default()
 	r.POST("/reverb-song", ap.Init_audio_processing)
-	r.GET("/test", ap.Test)
 	r.Run() // listen and serve on 0.0.0.0:8080
 }

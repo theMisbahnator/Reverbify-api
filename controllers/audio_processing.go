@@ -9,67 +9,49 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// This command is used to update and install the FFmpeg package on a system that uses
-// RUN apt-get -y update && apt-get -y upgrade && apt-get install -y --no-install-recommends ffmpeg
-
-var filter_path string = "./LexiconPCM90_Halls/"
-
-type audio_request struct {
-	Url       string `json:"url"`
-	PitchType int    `json:"pitch"` // 0 nothing, 1 fast (nightcore), -1 daycore (slow)
-}
-
-func Test(c *gin.Context) {
-	fn := "reverb_dummy.mp3"
-	upload("./music/"+fn, fn)
-	c.JSON(200, "")
-}
+var filter_path string = "./LexiconPCM90_Halls/CUSTOM_pump_verb.WAV"
 
 func Init_audio_processing(c *gin.Context) {
-	// youtube link
 	var body audio_request
-	if err := c.BindJSON(&body); err != nil {
-		c.String(400, "Invalid request body")
+	err := c.BindJSON(&body)
+
+	if handleError(err, c, "Invalid request body") {
 		return
 	}
+
+	// original pitch
 	var pitch string = "1.0"
 	if body.PitchType == 1 {
+		//  1 fast (nightcore)
 		pitch = "1.15"
 	} else if body.PitchType == -1 {
+		// -1 daycore (slow)
 		pitch = "0.85"
 	}
-	transform(c, body.Url, filter_path+"CUSTOM_pump_verb.WAV", pitch)
+
+	transform(c, body.Url, filter_path, pitch)
 }
 
 func transform(c *gin.Context, url string, filter string, pitch string) {
-	// get title information
-	title, fileName := getTitle(url)
-	if title == fileName && title == "ERROR: unable to get title." {
-		c.JSON(400, gin.H{
-			"ERROR": "Failed to get youtube header information.",
-		})
+	title, fileName, err := getTitle(url)
+	if handleError(err, c, title) {
 		return
 	}
 
 	// download video
-	if !getMP3FromYotube(url, fileName) {
-		c.JSON(400, gin.H{
-			"ERROR": "Failed to download from youtube. ",
-		})
+	err = getMP3FromYotube(url, fileName)
+	if handleError(err, c, "Failed to download from youtube.") {
 		return
 	}
 
 	// add reverb
-	fileName = fileName + ".mp3"
-	fileNameRev := "reverb_" + fileName
 	fmt.Println("Adding reverb...")
-	reverbCommand := exec.Command("ffmpeg", "-i", fileName, "-i", filter, "-filter_complex",
-		"[0] [1] afir=dry=10:wet=10 [reverb]; [0] [reverb] amix=inputs=2:weights=10 1", fileNameRev)
-	reverbOutput, err := reverbCommand.CombinedOutput()
-	if logErr(err, reverbOutput) || !deleteFile(fileName) {
-		c.JSON(400, gin.H{
-			"ERROR": "Failed in the reverbing process or deleting excess file.",
-		})
+	fileNameInput := fileName + ".mp3"
+	fileNameOutput := "reverb_" + fileNameInput
+	reverbCommand := exec.Command("ffmpeg", "-i", fileNameInput, "-i", filter, "-filter_complex",
+		"[0] [1] afir=dry=10:wet=10 [reverb]; [0] [reverb] amix=inputs=2:weights=10 1", fileNameOutput)
+	_, err = reverbCommand.CombinedOutput()
+	if handleError(err, c, "Failed in the reverb process.") || handleError(deleteFile(fileNameInput), c, "failed deleting file.") {
 		return
 	}
 
@@ -80,32 +62,24 @@ func transform(c *gin.Context, url string, filter string, pitch string) {
 	} else if pitch == "0.85" {
 		core = "slow"
 	}
-	fileNamePit := "pitch_" + core + "_" + fileNameRev
+
+	path := "./music/pitch_" + core + "_" + fileNameOutput
 	fmt.Println("Lowering pitch...")
-	path := "./music/" + fileNamePit
-	pitchCommand := exec.Command("ffmpeg", "-i", fileNameRev, "-af", "asetrate=44100*"+pitch+",aresample=44100", path)
-	pitchOutput, err := pitchCommand.CombinedOutput()
-	if logErr(err, pitchOutput) || !deleteFile(fileNameRev) {
-		c.JSON(400, gin.H{
-			"ERROR": "Failed in the altering pitch process or deleting excess file.",
-		})
+	pitchCommand := exec.Command("ffmpeg", "-i", fileNameOutput, "-af", "asetrate=44100*"+pitch+",aresample=44100", path)
+	whatisthis, err := pitchCommand.CombinedOutput()
+	if handleError(err, c, "Failed in the pitch altering process.") || handleError(deleteFile(fileNameOutput), c, "failed deleting file.") {
+		logErr(err, whatisthis)
 		return
 	}
 
 	thumbnailURL := getThumbnail(url)
 	duration := getVideoLength(path)
 	fmt.Println("Complete!")
-
-	upload(path, fileNamePit)
-
-	c.JSON(200, gin.H{
-		"title":     title,
-		"duration":  duration,
-		"thumbnail": thumbnailURL,
-	})
+	upload(path, fileNameInput)
+	sendAudioResponse(c, title, duration, thumbnailURL)
 }
 
-func getMP3FromYotube(url string, fileName string) bool {
+func getMP3FromYotube(url string, fileName string) error {
 	fileNameMP4 := fileName + ".mp4"
 	fileNameMP3 := fileName + ".mp3"
 
@@ -114,7 +88,7 @@ func getMP3FromYotube(url string, fileName string) bool {
 	downloadCommand := exec.Command("yt-dlp", "-f", "ba", "-S", "ext:mp4", "-o", fileNameMP4, url)
 	downloadOutput, err := downloadCommand.CombinedOutput()
 	if logErr(err, downloadOutput) {
-		return false
+		return err
 	}
 
 	// converts mp4 to mp3 using ffmpeg
@@ -122,24 +96,25 @@ func getMP3FromYotube(url string, fileName string) bool {
 	convertCommand := exec.Command("ffmpeg", "-i", fileNameMP4, fileNameMP3)
 	convertOutput, err := convertCommand.CombinedOutput()
 	if logErr(err, convertOutput) {
-		return false
+		return err
 	}
 
 	// removes uneeded mp4 file
 	fmt.Println("Removing mp4 file...")
-	if !deleteFile(fileNameMP4) {
-		return false
+	err = deleteFile(fileNameMP4)
+	if err != nil {
+		return err
 	}
 
 	fmt.Println("Successfully downloaded and converted YouTube video to MP3!")
-	return true
+	return nil
 }
 
-func getTitle(url string) (string, string) {
+func getTitle(url string) (string, string, error) {
 	getTitleCommand := exec.Command("youtube-dl", "--skip-download", "--get-title", url)
 	getTitleOutput, err := getTitleCommand.CombinedOutput()
 	if logErr(err, getTitleOutput) {
-		return "ERROR: unable to get title.", "ERROR: unable to get title."
+		return "ERROR: unable to get title.", "", err
 	}
 
 	raw := string(getTitleOutput)
@@ -149,7 +124,7 @@ func getTitle(url string) (string, string) {
 	}
 	fileName := strings.Replace(title, " ", "_", -1)
 
-	return title, fileName
+	return title, fileName, nil
 }
 
 func getThumbnail(url string) string {
@@ -159,7 +134,7 @@ func getThumbnail(url string) string {
 	// find instance within vid url
 	videoID := regex.FindStringSubmatch(url)[1]
 
-	return "https://img.youtube.com/vi/" + videoID + "/maxresdefault.jpg"
+	return "https://img.youtube.com/vi/" + videoID + "/default.jpg"
 }
 
 func getVideoLength(fileName string) string {
@@ -175,10 +150,10 @@ func getVideoLength(fileName string) string {
 	return videoDuration
 }
 
-func deleteFile(path string) bool {
+func deleteFile(path string) error {
 	deleteCommand := exec.Command("rm", "-r", path)
-	deleteOutput, err := deleteCommand.CombinedOutput()
-	return !logErr(err, deleteOutput)
+	_, err := deleteCommand.CombinedOutput()
+	return err
 }
 
 func logErr(err error, output []byte) bool {

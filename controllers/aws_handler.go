@@ -11,7 +11,6 @@ import (
 
 func upload(path string, fileName string) {
 	sess := session.Must(session.NewSession())
-
 	uploader := s3manager.NewUploader(sess)
 
 	file, err := os.Open(path)
@@ -34,9 +33,4 @@ func upload(path string, fileName string) {
 	}
 
 	log.Println("Successfully uploaded file to", result.Location)
-
-	// 	sec_key := os.Getenv("secret_access_key")
-	// 	key := os.Getenv("access_key")
-	// 	log.Println(sec_key)
-	// 	log.Println(key)
 }
