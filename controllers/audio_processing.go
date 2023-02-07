@@ -33,6 +33,9 @@ func Init_audio_processing(c *gin.Context) {
 }
 
 func transform(c *gin.Context, url string, filter string, pitch string) {
+
+	url = processUrl(url)
+
 	title, fileName, err := getTitle(url)
 	if handleError(err, c, title) {
 		return
@@ -66,9 +69,8 @@ func transform(c *gin.Context, url string, filter string, pitch string) {
 	path := "./music/pitch_" + core + "_" + fileNameOutput
 	fmt.Println("Lowering pitch...")
 	pitchCommand := exec.Command("ffmpeg", "-i", fileNameOutput, "-af", "asetrate=44100*"+pitch+",aresample=44100", path)
-	whatisthis, err := pitchCommand.CombinedOutput()
+	_, err = pitchCommand.CombinedOutput()
 	if handleError(err, c, "Failed in the pitch altering process.") || handleError(deleteFile(fileNameOutput), c, "failed deleting file.") {
-		logErr(err, whatisthis)
 		return
 	}
 
@@ -77,6 +79,12 @@ func transform(c *gin.Context, url string, filter string, pitch string) {
 	fmt.Println("Complete!")
 	upload(path, fileNameInput)
 	sendAudioResponse(c, title, duration, thumbnailURL)
+}
+
+func processUrl(url string) string {
+	regex := regexp.MustCompile(`^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*`)
+	videoID := regex.FindStringSubmatch(url)[2]
+	return "https://www.youtube.com/watch?v=" + videoID
 }
 
 func getMP3FromYotube(url string, fileName string) error {
@@ -134,7 +142,7 @@ func getThumbnail(url string) string {
 	// find instance within vid url
 	videoID := regex.FindStringSubmatch(url)[1]
 
-	return "https://img.youtube.com/vi/" + videoID + "/default.jpg"
+	return "https://img.youtube.com/vi/" + videoID + "/sddefault.jpg"
 }
 
 func getVideoLength(fileName string) string {
