@@ -1,12 +1,16 @@
 package controllers
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/api/option"
+	"google.golang.org/api/youtube/v3"
 )
 
 var filter_path string = "./LexiconPCM90_Halls/CUSTOM_pump_verb.WAV"
@@ -19,24 +23,15 @@ func Init_audio_processing(c *gin.Context) {
 		return
 	}
 
-	// original pitch
-	var pitch string = "1.0"
-	if body.PitchType == 1 {
-		//  1 fast (nightcore)
-		pitch = "1.15"
-	} else if body.PitchType == -1 {
-		// -1 daycore (slow)
-		pitch = "0.85"
-	}
-
-	transform(c, body.Url, filter_path, pitch)
+	transform(c, body.Url, filter_path, body.Pitch, body.Reverb, body.Bass)
 }
 
-func transform(c *gin.Context, url string, filter string, pitch string) {
+func transform(c *gin.Context, url string, filter string, pitch string, reverb bool, bass bool) {
+	var videoId string
+	url, videoId = processUrl(url)
 
-	url = processUrl(url)
+	title, fileName, author, err := getTitle(url, videoId)
 
-	title, fileName, err := getTitle(url)
 	if handleError(err, c, title) {
 		return
 	}
@@ -48,26 +43,20 @@ func transform(c *gin.Context, url string, filter string, pitch string) {
 	}
 
 	// add reverb
-	fmt.Println("Adding reverb...")
 	fileNameInput := fileName + ".mp3"
-	fileNameOutput := "reverb_" + fileNameInput
-	reverbCommand := exec.Command("ffmpeg", "-i", fileNameInput, "-i", filter, "-filter_complex",
-		"[0] [1] afir=dry=10:wet=10 [reverb]; [0] [reverb] amix=inputs=2:weights=10 1", fileNameOutput)
-	_, err = reverbCommand.CombinedOutput()
-	if handleError(err, c, "Failed in the reverb process.") || handleError(deleteFile(fileNameInput), c, "failed deleting file.") {
-		return
+	fileNameOutput := fileNameInput
+	if reverb {
+		fmt.Println("Adding reverb...")
+		fileNameOutput = "reverb_" + fileNameInput
+		reverbCommand := exec.Command("ffmpeg", "-i", fileNameInput, "-i", filter, "-filter_complex",
+			"[0] [1] afir=dry=10:wet=10 [reverb]; [0] [reverb] amix=inputs=2:weights=10 1", fileNameOutput)
+		_, err = reverbCommand.CombinedOutput()
+		if handleError(err, c, "Failed in the reverb process.") || handleError(deleteFile(fileNameInput), c, "failed deleting file.") {
+			return
+		}
 	}
 
-	// alter pitch
-	var core string = "norm"
-	if pitch == "1.15" {
-		core = "fast"
-	} else if pitch == "0.85" {
-		core = "slow"
-	}
-
-	path := "./music/pitch_" + core + "_" + fileNameOutput
-	fmt.Println("Lowering pitch...")
+	path := "./music/pitch_speed:_" + pitch + "_" + fileNameOutput
 	pitchCommand := exec.Command("ffmpeg", "-i", fileNameOutput, "-af", "asetrate=44100*"+pitch+",aresample=44100", path)
 	_, err = pitchCommand.CombinedOutput()
 	if handleError(err, c, "Failed in the pitch altering process.") || handleError(deleteFile(fileNameOutput), c, "failed deleting file.") {
@@ -78,13 +67,13 @@ func transform(c *gin.Context, url string, filter string, pitch string) {
 	duration := getVideoLength(path)
 	fmt.Println("Complete!")
 	upload(path, fileNameInput)
-	sendAudioResponse(c, title, duration, thumbnailURL)
+	sendAudioResponse(c, title, duration, author, thumbnailURL)
 }
 
-func processUrl(url string) string {
+func processUrl(url string) (string, string) {
 	regex := regexp.MustCompile(`^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*`)
-	videoID := regex.FindStringSubmatch(url)[2]
-	return "https://www.youtube.com/watch?v=" + videoID
+	videoId := regex.FindStringSubmatch(url)[2]
+	return "https://www.youtube.com/watch?v=" + videoId, videoId
 }
 
 func getMP3FromYotube(url string, fileName string) error {
@@ -118,21 +107,32 @@ func getMP3FromYotube(url string, fileName string) error {
 	return nil
 }
 
-func getTitle(url string) (string, string, error) {
-	getTitleCommand := exec.Command("youtube-dl", "--skip-download", "--get-title", url)
-	getTitleOutput, err := getTitleCommand.CombinedOutput()
-	if logErr(err, getTitleOutput) {
-		return "ERROR: unable to get title.", "", err
+func getTitle(url string, videoId string) (string, string, string, error) {
+	apiKey := os.Getenv("API_KEY")
+
+	service, err := youtube.NewService(context.Background(), option.WithAPIKey(apiKey))
+	if err != nil {
+		fmt.Println(fmt.Sprint(err))
+		return "", "", "", err
 	}
 
-	raw := string(getTitleOutput)
-	title := raw
+	videoResponse, err := service.Videos.List([]string{"snippet"}).Id(videoId).Do()
+	if err != nil {
+		fmt.Println(fmt.Sprint(err))
+		return "", "", "", err
+	}
+
+	title := videoResponse.Items[0].Snippet.Title
+	publisher := videoResponse.Items[0].Snippet.ChannelTitle
+
+	raw := string(title)
+	title_vid := raw
 	if len(raw) > 2 {
 		title = raw[:len(raw)-1]
 	}
-	fileName := strings.Replace(title, " ", "_", -1)
+	fileName := strings.Replace(title_vid, " ", "_", -1)
 
-	return title, fileName, nil
+	return title, fileName, publisher, err
 }
 
 func getThumbnail(url string) string {
