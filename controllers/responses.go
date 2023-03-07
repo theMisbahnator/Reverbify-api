@@ -28,6 +28,10 @@ func handleError(err error, c *gin.Context, errMSG string) bool {
 	return false
 }
 
+func healthCheck(c *gin.Context) {
+	c.JSON(200, "This endpoint works.")
+}
+
 func sendAudioResponse(c *gin.Context, title string, duration string, author string, thumbnail string) {
 	response := audio_response{
 		title, author, duration, thumbnail,

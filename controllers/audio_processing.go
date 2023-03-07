@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"google.golang.org/api/option"
@@ -26,6 +27,10 @@ func Init_audio_processing(c *gin.Context) {
 	transform(c, body.Url, filter_path, body.Pitch, body.Reverb, body.Bass)
 }
 
+func Health_check(c *gin.Context) {
+	healthCheck(c)
+}
+
 func transform(c *gin.Context, url string, filter string, pitch string, reverb bool, bass bool) {
 	var videoId string
 	url, videoId = processUrl(url)
@@ -37,29 +42,32 @@ func transform(c *gin.Context, url string, filter string, pitch string, reverb b
 	}
 
 	// download video
-	err = getMP3FromYotube(url, fileName)
+	fileName, err = getMP3FromYotube(url, fileName)
 	if handleError(err, c, "Failed to download from youtube.") {
 		return
 	}
 
 	// add reverb
-	fileNameInput := fileName + ".mp3"
+	fileNameInput := fileName
 	fileNameOutput := fileNameInput
 	if reverb {
 		fmt.Println("Adding reverb...")
 		fileNameOutput = "reverb_" + fileNameInput
 		reverbCommand := exec.Command("ffmpeg", "-i", fileNameInput, "-i", filter, "-filter_complex",
 			"[0] [1] afir=dry=10:wet=10 [reverb]; [0] [reverb] amix=inputs=2:weights=10 1", fileNameOutput)
-		_, err = reverbCommand.CombinedOutput()
+		output, err := reverbCommand.CombinedOutput()
 		if handleError(err, c, "Failed in the reverb process.") || handleError(deleteFile(fileNameInput), c, "failed deleting file.") {
+			logErr(err, output)
 			return
 		}
 	}
 
 	path := "./music/pitch_speed:_" + pitch + "_" + fileNameOutput
 	pitchCommand := exec.Command("ffmpeg", "-i", fileNameOutput, "-af", "asetrate=44100*"+pitch+",aresample=44100", path)
-	_, err = pitchCommand.CombinedOutput()
+	output, err := pitchCommand.CombinedOutput()
+	fmt.Println("Altering pitch to " + pitch)
 	if handleError(err, c, "Failed in the pitch altering process.") || handleError(deleteFile(fileNameOutput), c, "failed deleting file.") {
+		logErr(err, output)
 		return
 	}
 
@@ -76,16 +84,16 @@ func processUrl(url string) (string, string) {
 	return "https://www.youtube.com/watch?v=" + videoId, videoId
 }
 
-func getMP3FromYotube(url string, fileName string) error {
+func getMP3FromYotube(url string, fileName string) (string, error) {
 	fileNameMP4 := fileName + ".mp4"
-	fileNameMP3 := fileName + ".mp3"
+	fileNameMP3 := fileName + "_" + createTimeStamp() + ".mp3"
 
 	// Uses youtube-dl exec on machine to download videos from youtube
 	fmt.Println("Downloaded mp4 file...")
 	downloadCommand := exec.Command("yt-dlp", "-f", "ba", "-S", "ext:mp4", "-o", fileNameMP4, url)
 	downloadOutput, err := downloadCommand.CombinedOutput()
 	if logErr(err, downloadOutput) {
-		return err
+		return "", err
 	}
 
 	// converts mp4 to mp3 using ffmpeg
@@ -93,18 +101,18 @@ func getMP3FromYotube(url string, fileName string) error {
 	convertCommand := exec.Command("ffmpeg", "-i", fileNameMP4, fileNameMP3)
 	convertOutput, err := convertCommand.CombinedOutput()
 	if logErr(err, convertOutput) {
-		return err
+		return "", err
 	}
 
 	// removes uneeded mp4 file
 	fmt.Println("Removing mp4 file...")
 	err = deleteFile(fileNameMP4)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	fmt.Println("Successfully downloaded and converted YouTube video to MP3!")
-	return nil
+	return fileNameMP3, nil
 }
 
 func getTitle(url string, videoId string) (string, string, string, error) {
@@ -156,6 +164,14 @@ func getVideoLength(fileName string) string {
 	videoDuration := regex.FindStringSubmatch(string(readOutput))[1]
 
 	return videoDuration
+}
+
+func createTimeStamp() string {
+	t := time.Now()
+	timestamp := t.Format("2006-01-02 15:04:05")
+	modifiedTimestamp := strings.Replace(timestamp, " ", "_", -1)
+
+	return modifiedTimestamp
 }
 
 func deleteFile(path string) error {
