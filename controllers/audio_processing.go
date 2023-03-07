@@ -74,8 +74,12 @@ func transform(c *gin.Context, url string, filter string, pitch string, reverb b
 	thumbnailURL := getThumbnail(url)
 	duration := getVideoLength(path)
 	fmt.Println("Complete!")
-	upload(path, fileNameInput)
-	sendAudioResponse(c, title, duration, author, thumbnailURL)
+	signedUrl, err := upload(path, fileNameInput)
+	if handleError(err, c, signedUrl) {
+		logErr(err, output)
+		return
+	}
+	sendAudioResponse(c, title, duration, author, thumbnailURL, signedUrl, fileNameInput)
 }
 
 func processUrl(url string) (string, string) {
