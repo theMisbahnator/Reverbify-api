@@ -7,8 +7,15 @@ import (
 type audio_request struct {
 	Url    string `json:"url"`
 	Pitch  string `json:"pitch"`
-	Bass   bool   `json:"bass"`
+	Bass   bass   `json:"bass"`
 	Reverb bool   `json:"reverb"`
+}
+
+type bass struct {
+	SetBass     bool   `json:"change"`
+	CentFreq    string `json:"centerFreq"`
+	FilterWidth string `json:"filterWidth"`
+	Gain        string `json:"gain"`
 }
 
 type audio_response struct {

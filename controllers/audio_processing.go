@@ -31,7 +31,7 @@ func Health_check(c *gin.Context) {
 	healthCheck(c)
 }
 
-func transform(c *gin.Context, url string, filter string, pitch string, reverb bool, bass bool) {
+func transform(c *gin.Context, url string, filter string, pitch string, reverb bool, bass bass) {
 	var videoId string
 	url, videoId = processUrl(url)
 
@@ -48,38 +48,32 @@ func transform(c *gin.Context, url string, filter string, pitch string, reverb b
 	}
 
 	// add reverb
-	fileNameInput := fileName
-	fileNameOutput := fileNameInput
-	if reverb {
-		fmt.Println("Adding reverb...")
-		fileNameOutput = "reverb_" + fileNameInput
-		reverbCommand := exec.Command("ffmpeg", "-i", fileNameInput, "-i", filter, "-filter_complex",
-			"[0] [1] afir=dry=10:wet=10 [reverb]; [0] [reverb] amix=inputs=2:weights=10 1", fileNameOutput)
-		output, err := reverbCommand.CombinedOutput()
-		if handleError(err, c, "Failed in the reverb process.") || handleError(deleteFile(fileNameInput), c, "failed deleting file.") {
-			logErr(err, output)
-			return
-		}
-	}
-
-	path := "./music/pitch_speed:_" + pitch + "_" + fileNameOutput
-	pitchCommand := exec.Command("ffmpeg", "-i", fileNameOutput, "-af", "asetrate=44100*"+pitch+",aresample=44100", path)
-	output, err := pitchCommand.CombinedOutput()
-	fmt.Println("Altering pitch to " + pitch)
-	if handleError(err, c, "Failed in the pitch altering process.") || handleError(deleteFile(fileNameOutput), c, "failed deleting file.") {
-		logErr(err, output)
+	didReverb, fileNameOutput := processReverb(fileName, c, reverb, filter)
+	if !didReverb {
 		return
 	}
 
+	// change bass
+	didBass, fileNameOutput := processBass(fileNameOutput, c, bass)
+	if !didBass {
+		return
+	}
+
+	// change pitch
+	didPitch, finalPath := processPitch(fileNameOutput, c, pitch)
+	if !didPitch {
+		return
+	}
+
+	// meta data
 	thumbnailURL := getThumbnail(url)
-	duration := getVideoLength(path)
+	duration := getVideoLength(finalPath)
 	fmt.Println("Complete!")
-	signedUrl, err := upload(path, fileNameInput)
+	signedUrl, err := upload(finalPath, fileNameOutput)
 	if handleError(err, c, signedUrl) {
-		logErr(err, output)
 		return
 	}
-	sendAudioResponse(c, title, duration, author, thumbnailURL, signedUrl, fileNameInput)
+	sendAudioResponse(c, title, duration, author, thumbnailURL, signedUrl, fileNameOutput)
 }
 
 func processUrl(url string) (string, string) {
@@ -117,6 +111,50 @@ func getMP3FromYotube(url string, fileName string) (string, error) {
 
 	fmt.Println("Successfully downloaded and converted YouTube video to MP3!")
 	return fileNameMP3, nil
+}
+
+func processReverb(fileNameInput string, c *gin.Context, reverb bool, filter string) (bool, string) {
+	fileNameOutput := fileNameInput
+	if reverb {
+		fmt.Println("Adding reverb...")
+		fileNameOutput = "rev_" + fileNameInput
+		reverbCommand := exec.Command("ffmpeg", "-i", fileNameInput, "-i", filter, "-filter_complex",
+			"[0] [1] afir=dry=10:wet=10 [reverb]; [0] [reverb] amix=inputs=2:weights=10 1", fileNameOutput)
+		output, err := reverbCommand.CombinedOutput()
+		if handleError(err, c, "Failed in the reverb process.") || handleError(deleteFile(fileNameInput), c, "failed deleting file.") {
+			logErr(err, output)
+			return false, ""
+		}
+	}
+	return true, fileNameOutput
+}
+
+func processPitch(fileNameInput string, c *gin.Context, pitch string) (bool, string) {
+	path := "./music/pitch_speed:_" + pitch + "_" + fileNameInput
+	pitchCommand := exec.Command("ffmpeg", "-i", fileNameInput, "-af", "asetrate=44100*"+pitch+",aresample=44100", path)
+	output, err := pitchCommand.CombinedOutput()
+	fmt.Println("Altering pitch to " + pitch)
+	if handleError(err, c, "Failed in the pitch altering process.") || handleError(deleteFile(fileNameInput), c, "failed deleting file.") {
+		logErr(err, output)
+		return false, ""
+	}
+	return true, path
+}
+
+func processBass(fileNameInput string, c *gin.Context, bass bass) (bool, string) {
+	fileNameOutput := fileNameInput
+	if bass.SetBass {
+		fileNameOutput = "bass_" + fileNameInput
+		bassArgs := []string{"-i", fileNameInput, "-af", "equalizer=f=" + bass.CentFreq + ":width_type=h:width=" + bass.FilterWidth + ":g=" + bass.Gain, fileNameOutput}
+		bassCommand := exec.Command("ffmpeg", bassArgs...)
+		output, err := bassCommand.Output()
+		if handleError(err, c, "Failed in the bass process.") || handleError(deleteFile(fileNameInput), c, "failed deleting file.") {
+			logErr(err, output)
+			return false, ""
+		}
+	}
+
+	return true, fileNameOutput
 }
 
 func getTitle(url string, videoId string) (string, string, string, error) {
