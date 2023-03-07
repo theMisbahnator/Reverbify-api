@@ -71,6 +71,7 @@ func transform(c *gin.Context, url string, pitch string, reverb string, bass bas
 	if handleError(err, c, signedUrl) {
 		return
 	}
+	deleteFile(finalPath)
 	sendAudioResponse(c, title, duration, author, thumbnailURL, signedUrl, fileNameOutput)
 }
 
