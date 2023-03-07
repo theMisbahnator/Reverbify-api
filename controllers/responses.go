@@ -8,7 +8,7 @@ type audio_request struct {
 	Url    string `json:"url"`
 	Pitch  string `json:"pitch"`
 	Bass   bass   `json:"bass"`
-	Reverb bool   `json:"reverb"`
+	Reverb string `json:"reverb"`
 }
 
 type bass struct {
@@ -25,6 +25,7 @@ type audio_response struct {
 	Thumbnail string `json:"thumbnail"`
 	AwsUrl    string `json:"signedUrl"`
 	Filename  string `json:"filename"`
+	Timestamp string `json:"timestamp"`
 }
 
 type signed_url_request struct {
@@ -52,7 +53,7 @@ func healthCheck(c *gin.Context) {
 func sendAudioResponse(c *gin.Context, title string, duration string, author string, thumbnail string,
 	signedUrl string, filename string) {
 	response := audio_response{
-		title, author, duration, thumbnail, signedUrl, filename,
+		title, author, duration, thumbnail, signedUrl, filename, createTimeStamp(),
 	}
 	c.JSON(200, response)
 }

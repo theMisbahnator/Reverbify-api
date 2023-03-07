@@ -14,8 +14,6 @@ import (
 	"google.golang.org/api/youtube/v3"
 )
 
-var filter_path string = "./LexiconPCM90_Halls/CUSTOM_pump_verb.WAV"
-
 func Init_audio_processing(c *gin.Context) {
 	var body audio_request
 	err := c.BindJSON(&body)
@@ -24,14 +22,14 @@ func Init_audio_processing(c *gin.Context) {
 		return
 	}
 
-	transform(c, body.Url, filter_path, body.Pitch, body.Reverb, body.Bass)
+	transform(c, body.Url, body.Pitch, body.Reverb, body.Bass)
 }
 
 func Health_check(c *gin.Context) {
 	healthCheck(c)
 }
 
-func transform(c *gin.Context, url string, filter string, pitch string, reverb bool, bass bass) {
+func transform(c *gin.Context, url string, pitch string, reverb string, bass bass) {
 	var videoId string
 	url, videoId = processUrl(url)
 
@@ -48,7 +46,7 @@ func transform(c *gin.Context, url string, filter string, pitch string, reverb b
 	}
 
 	// add reverb
-	didReverb, fileNameOutput := processReverb(fileName, c, reverb, filter)
+	didReverb, fileNameOutput := processReverb(fileName, c, reverb)
 	if !didReverb {
 		return
 	}
@@ -113,12 +111,28 @@ func getMP3FromYotube(url string, fileName string) (string, error) {
 	return fileNameMP3, nil
 }
 
-func processReverb(fileNameInput string, c *gin.Context, reverb bool, filter string) (bool, string) {
+func processReverb(fileNameInput string, c *gin.Context, reverb string) (bool, string) {
+	var filter_path string = "./ReverbFilters/"
+	reverbTypes := map[string]string{
+		"1":  "CUSTOM_pump_verb.WAV",
+		"2":  "INSTR_snare_gate.WAV",
+		"3":  "VOC_deep_verb.WAV",
+		"4":  "VOC_good_ol'_verb.WAV",
+		"5":  "VOC_slap_hall.WAV",
+		"6":  "VOC_vocal_magic.WAV",
+		"7":  "ORCH_small_hall.WAV",
+		"8":  "ORCH_medium_hall.WAV",
+		"9":  "ORCH_large_hall.WAV",
+		"10": "ORCH_concert_hall.WAV",
+		"11": "LIVE_live_arena.WAV",
+	}
+
 	fileNameOutput := fileNameInput
-	if reverb {
+	if filter, ok := reverbTypes[reverb]; ok {
+		filter_path = filter_path + filter
 		fmt.Println("Adding reverb...")
-		fileNameOutput = "rev_" + fileNameInput
-		reverbCommand := exec.Command("ffmpeg", "-i", fileNameInput, "-i", filter, "-filter_complex",
+		fileNameOutput = "rev_" + reverb + "_" + fileNameInput
+		reverbCommand := exec.Command("ffmpeg", "-i", fileNameInput, "-i", filter_path, "-filter_complex",
 			"[0] [1] afir=dry=10:wet=10 [reverb]; [0] [reverb] amix=inputs=2:weights=10 1", fileNameOutput)
 		output, err := reverbCommand.CombinedOutput()
 		if handleError(err, c, "Failed in the reverb process.") || handleError(deleteFile(fileNameInput), c, "failed deleting file.") {
