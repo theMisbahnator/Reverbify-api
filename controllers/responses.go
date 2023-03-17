@@ -5,6 +5,7 @@ import (
 )
 
 type audio_request struct {
+	User   string `json:"user"`
 	Url    string `json:"url"`
 	Pitch  string `json:"pitch"`
 	Bass   bass   `json:"bass"`
@@ -36,10 +37,16 @@ type signed_url_response struct {
 	Url string `json:"signedUrl"`
 }
 
+func sendError(c *gin.Context, errMSG string) {
+	c.JSON(400, gin.H{
+		"Error": errMSG,
+	})
+}
+
 func handleError(err error, c *gin.Context, errMSG string) bool {
 	if err != nil {
 		c.JSON(400, gin.H{
-			"ERROR": errMSG,
+			"Error": errMSG,
 		})
 		return true
 	}

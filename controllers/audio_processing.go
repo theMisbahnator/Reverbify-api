@@ -22,18 +22,22 @@ func Init_audio_processing(c *gin.Context) {
 		return
 	}
 
-	transform(c, body.Url, body.Pitch, body.Reverb, body.Bass)
+	transform(c, body.User, body.Url, body.Pitch, body.Reverb, body.Bass)
 }
 
 func Health_check(c *gin.Context) {
 	healthCheck(c)
 }
 
-func transform(c *gin.Context, url string, pitch string, reverb string, bass bass) {
+func transform(c *gin.Context, user string, url string, pitch string, reverb string, bass bass) {
 	var videoId string
-	url, videoId = processUrl(url)
+	success, url, videoId := processUrl(url)
+	if !success {
+		sendError(c, url)
+		return
+	}
 
-	title, fileName, author, err := getTitle(url, videoId)
+	title, fileName, author, err := getTitle(user, videoId)
 
 	if handleError(err, c, title) {
 		return
@@ -75,10 +79,14 @@ func transform(c *gin.Context, url string, pitch string, reverb string, bass bas
 	sendAudioResponse(c, title, duration, author, thumbnailURL, signedUrl, fileNameOutput)
 }
 
-func processUrl(url string) (string, string) {
+func processUrl(url string) (bool, string, string) {
 	regex := regexp.MustCompile(`^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*`)
-	videoId := regex.FindStringSubmatch(url)[2]
-	return "https://www.youtube.com/watch?v=" + videoId, videoId
+	if len(regex.FindStringSubmatch(url)) < 2 {
+		return false, "Invalid Youtube Url. Unable to locate Video ID in url.", ""
+	} else {
+		videoId := regex.FindStringSubmatch(url)[2]
+		return true, "https://www.youtube.com/watch?v=" + videoId, videoId
+	}
 }
 
 func getMP3FromYotube(url string, fileName string) (string, error) {
@@ -172,7 +180,7 @@ func processBass(fileNameInput string, c *gin.Context, bass bass) (bool, string)
 	return true, fileNameOutput
 }
 
-func getTitle(url string, videoId string) (string, string, string, error) {
+func getTitle(user string, videoId string) (string, string, string, error) {
 	apiKey := os.Getenv("API_KEY")
 
 	service, err := youtube.NewService(context.Background(), option.WithAPIKey(apiKey))
@@ -189,13 +197,7 @@ func getTitle(url string, videoId string) (string, string, string, error) {
 
 	title := videoResponse.Items[0].Snippet.Title
 	publisher := videoResponse.Items[0].Snippet.ChannelTitle
-
-	raw := string(title)
-	title_vid := raw
-	if len(raw) > 2 {
-		title = raw[:len(raw)-1]
-	}
-	fileName := strings.Replace(title_vid, " ", "_", -1)
+	fileName := user
 
 	return title, fileName, publisher, err
 }
