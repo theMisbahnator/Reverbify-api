@@ -33,6 +33,10 @@ type signed_url_request struct {
 	Filename string `json:"filename"`
 }
 
+type delete_song_request struct {
+	Filename string `json:"filename"`
+}
+
 type signed_url_response struct {
 	Url string `json:"signedUrl"`
 }

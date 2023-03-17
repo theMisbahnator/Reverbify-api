@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,9 +38,14 @@ func transform(c *gin.Context, user string, url string, pitch string, reverb str
 		return
 	}
 
-	title, fileName, author, err := getTitle(user, videoId)
+	title, fileName, author, videoLength, err := getTitle(user, videoId)
 
 	if handleError(err, c, title) {
+		return
+	}
+
+	if !meetsTimeLimit(videoLength) {
+		sendError(c, "Videos must be under 15 minutes.")
 		return
 	}
 
@@ -180,26 +186,73 @@ func processBass(fileNameInput string, c *gin.Context, bass bass) (bool, string)
 	return true, fileNameOutput
 }
 
-func getTitle(user string, videoId string) (string, string, string, error) {
+func getTitle(user string, videoId string) (string, string, string, string, error) {
 	apiKey := os.Getenv("API_KEY")
 
 	service, err := youtube.NewService(context.Background(), option.WithAPIKey(apiKey))
 	if err != nil {
 		fmt.Println(fmt.Sprint(err))
-		return "", "", "", err
+		return "", "", "", "", err
 	}
 
 	videoResponse, err := service.Videos.List([]string{"snippet"}).Id(videoId).Do()
 	if err != nil {
 		fmt.Println(fmt.Sprint(err))
-		return "", "", "", err
+		return "", "", "", "", err
 	}
+	response, _ := service.Videos.List([]string{"contentDetails"}).Id(videoId).Do()
 
 	title := videoResponse.Items[0].Snippet.Title
 	publisher := videoResponse.Items[0].Snippet.ChannelTitle
+	duration := response.Items[0].ContentDetails.Duration
+
 	fileName := user
 
-	return title, fileName, publisher, err
+	return title, fileName, publisher, duration, err
+}
+
+func meetsTimeLimit(vidLength string) bool {
+	// access time cap through env variable
+	envVar := os.Getenv("TIME_CAP")
+	var seconds float64 = 900
+	if envVar != "" {
+		seconds, _ = strconv.ParseFloat(envVar, 64)
+	}
+
+	// extract the duration from the video details and compare to ENV minutes
+	duration, err := parseDuration(vidLength)
+	if err != nil {
+		panic(err)
+	}
+	minutes := fmt.Sprintf("%f", seconds/60)
+	if duration > seconds {
+		fmt.Println("Error: video duration is greater than " + minutes + " minutes")
+		return false
+	}
+	return true
+}
+
+func parseDuration(duration string) (float64, error) {
+	re := regexp.MustCompile(`PT(\d+H)?(\d+M)?(\d+S)?`)
+	matches := re.FindStringSubmatch(duration)
+
+	var hours, minutes, seconds int
+
+	if matches[1] != "" {
+		hours, _ = strconv.Atoi(matches[1][:len(matches[1])-1])
+	}
+
+	if matches[2] != "" {
+		minutes, _ = strconv.Atoi(matches[2][:len(matches[2])-1])
+	}
+
+	if matches[3] != "" {
+		seconds, _ = strconv.Atoi(matches[3][:len(matches[3])-1])
+	}
+
+	totalSeconds := float64(hours*3600 + minutes*60 + seconds)
+
+	return totalSeconds, nil
 }
 
 func getThumbnail(url string) string {

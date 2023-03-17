@@ -30,6 +30,15 @@ func Init_get_url(c *gin.Context) {
 	sendUrlResponse(c, url)
 }
 
+func Init_delete_AWS_file(c *gin.Context) {
+	var body delete_song_request
+	err := c.BindJSON(&body)
+	if handleError(err, c, "Invalid request body") {
+		return
+	}
+	deleteFileAWS(body.Filename, c)
+}
+
 func upload(path string, fileName string) (string, error) {
 	sess := session.Must(session.NewSession())
 	uploader := s3manager.NewUploader(sess)
@@ -63,6 +72,30 @@ func upload(path string, fileName string) (string, error) {
 	}
 
 	return url, nil
+}
+
+func deleteFileAWS(filename string, c *gin.Context) {
+	// create a new S3 session
+	sess := session.Must(session.NewSession())
+
+	// create an S3 service client
+	svc := s3.New(sess)
+
+	// set the parameters for deleting the file
+	input := &s3.DeleteObjectInput{
+		Bucket: aws.String("reverbify"),
+		Key:    aws.String(filename),
+	}
+
+	// delete the file
+	_, err := svc.DeleteObject(input)
+	if err != nil {
+		fmt.Println("Error deleting object:", err)
+		handleError(err, c, "Error deleting object")
+		return
+	}
+
+	fmt.Println("Object deleted successfully")
 }
 
 func getSignedUrl(fileName string, sess *session.Session) (string, error) {
