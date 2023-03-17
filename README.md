@@ -6,10 +6,20 @@ Obsessed with slowed and reverb music on youtube? How about bass boosted tunes a
 ## Endpoints
 ### Routes
 
-#### GET https://reverbify-backend-klfqvexjrq-vp.a.run.app/health-check
+#### GET https://reverbify-api-service-klfqvexjrq-vp.a.run.app/health-check
 - Returns back a 200 response with a string ensuring the app is running properly. 
 
-#### POST https://reverbify-backend-klfqvexjrq-vp.a.run.app/signed-url
+
+#### POST https://reverbify-api-service-klfqvexjrq-vp.a.run.app/delete-song
+- Given a file name of a mp3 file on AWS, it deletes the file on the bucket
+- Body of the request: 
+```yaml
+{
+   "filename": <place file name here>
+}
+```
+
+#### POST https://reverbify-api-service-klfqvexjrq-vp.a.run.app/signed-url
 - Given a file name of a mp3 file on AWS, returns a signed url to that mp3
 - Body of the request: 
 ```yaml
@@ -25,11 +35,12 @@ Obsessed with slowed and reverb music on youtube? How about bass boosted tunes a
 }
 ```
 
-#### POST https://reverbify-backend-klfqvexjrq-vp.a.run.app/reverb-song
+#### POST https://reverbify-api-service-klfqvexjrq-vp.a.run.app/reverb-song
 - Given a youtube link and a set of audio processing requests, returns meta data about the produced song along with a link to file on AWS
 - Body of the request: 
 ```yaml
 {
+    "user": "<User name>",
     "url": "<youtube link>",
     "pitch": "<double from .5 to 1.5 wrapped in quotes, 1 for original form>",
     "reverb": "<number from 1 through 11 represents a type of reverb, 0 for no reverb>",
